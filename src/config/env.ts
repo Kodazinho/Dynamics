@@ -27,4 +27,6 @@ export const ENV = {
     roleVerificarId: process.env.ROLE_VERIFICAR_ID ? String(process.env.ROLE_VERIFICAR_ID).trim() : undefined,
     roleClienteId: process.env.ROLE_CLIENTE_ID ? String(process.env.ROLE_CLIENTE_ID).trim() : undefined,
     salesChannelId: process.env.SALES_CHANNEL_ID ? String(process.env.SALES_CHANNEL_ID).trim() : undefined,
+    statusVoiceChannelId: process.env.STATUS_VOICE_CHANNEL_ID ? String(process.env.STATUS_VOICE_CHANNEL_ID).trim() : undefined,
+    ticketLogChannelId: process.env.TICKET_LOG_CHANNEL_ID ? String(process.env.TICKET_LOG_CHANNEL_ID).trim() : undefined,
 }

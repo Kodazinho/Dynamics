@@ -17,7 +17,8 @@ export default {
                 .setDescription("Tipo do botão")
                 .setRequired(true)
                 .addChoices(
-                    { name: "Ticket", value: "ticket" },
+                    { name: "Compra", value: "buy" },
+                    { name: "Suporte", value: "support" },
                     { name: "Verificar", value: "verify" }
                 )
         )
@@ -56,12 +57,18 @@ export default {
 
             const button = new ButtonBuilder()
             
-            if (type === "ticket") {
+            if (type === "buy") {
                 button
                     .setCustomId("open_ticket")
+                    .setLabel("Comprar Robux")
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji("🛒")
+            } else if (type === "support") {
+                button
+                    .setCustomId("open_support")
                     .setLabel("Abrir Ticket")
                     .setStyle(ButtonStyle.Secondary)
-                    .setEmoji({ name: "x6_skulls", id: "1390688820483067996" })
+                    .setEmoji("📌")
             } else {
                 button
                     .setCustomId("verify_member")
@@ -74,7 +81,7 @@ export default {
 
             await msg.edit({ components: [row] })
 
-            await interaction.reply({ content: `Botão de ${type === "ticket" ? "Ticket" : "Verificação"} adicionado com sucesso!`, ephemeral: true })
+            await interaction.reply({ content: `Botão de ${type} adicionado com sucesso!`, ephemeral: true })
         } catch (err) {
             console.error(err)
             await interaction.reply({ content: "Falha ao adicionar botão.", ephemeral: true })

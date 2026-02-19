@@ -4,6 +4,7 @@ import { loadCommands } from "./handlers/commandHandler"
 import { Logger } from "./utils/logger"
 import { TicketHandler } from "./handlers/ticketHandler"
 import { WelcomeHandler } from "./handlers/welcomeHandler"
+import { StatusService } from "./services/statusService"
 
 if (!ENV.owner) {
     throw new Error("❌ OWNER_ID não definido no .env")
@@ -17,6 +18,9 @@ new WelcomeHandler(client)
 
 client.once("ready", async () => {
     Logger.success(`Bot online como ${client.user?.tag}`)
+    
+    const statusService = StatusService.getInstance()
+    await statusService.updateVoiceChannel(client)
 
     const allowedServerId = ENV.serverid
     if (!allowedServerId) {
