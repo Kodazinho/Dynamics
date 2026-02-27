@@ -174,15 +174,28 @@ export class TicketHandler {
                 const coupon = couponRows[0]
                 discountApplied = coupon.discount_percent
                 finalValue = originalValue * (1 - discountApplied / 100)
+
+                if(coupon.booster == true){
+                    if (!interaction.guild) {
+                        return await interaction.reply({ content: "Este comando só pode ser usado em um servidor.", ephemeral: true });
+                    }
+                    
+                    const member = await interaction.guild.members.fetch(interaction.user.id);
+                    if (!member.premiumSince) {
+                        return await interaction.editReply({ content: "Para você utilizar este cupom precisa ser booster no servidor." });
+                    }
+                }
+
+
                 
                 // Incrementa o uso do cupom
                 await db.execute("UPDATE coupons SET used_count = used_count + 1 WHERE id = ?", [coupon.id])
             } else {
-                return await interaction.editReply({ content: "❌ Cupom inválido, expirado ou com limite de uso atingido." })
+                return await interaction.editReply({ content: "Cupom inválido, expirado ou com limite de uso atingido." })
             }
         }
 
-        if (finalValue < 5.00) return await interaction.editReply({ content: `❌ Valor mínimo R$ 5,00 (Aprox. ${Math.ceil(5 / robuxPrice)} Robux).` })
+        if (finalValue < 5.00) return await interaction.editReply({ content: `Valor mínimo R$ 5,00 (Aprox. ${Math.ceil(5 / robuxPrice)} Robux).` })
 
         const channel = await this.createTicketChannel(interaction, `🎟️-${interaction.user.username}`)
         if (!channel) return
@@ -190,7 +203,7 @@ export class TicketHandler {
         const pixCharge = await this.asaas.createPixCharge(finalValue)
         if (!pixCharge) {
             await channel.delete().catch(() => {})
-            return await interaction.editReply({ content: "❌ Erro ao gerar PIX." })
+            return await interaction.editReply({ content: "Erro ao gerar PIX." })
         }
 
         await db.execute(

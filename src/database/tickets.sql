@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS coupons (
     max_uses INT NOT NULL,
     used_count INT DEFAULT 0,
     expires_at DATETIME NOT NULL,
+    booster BOOLEAN DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

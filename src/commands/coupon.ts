@@ -10,8 +10,18 @@ export default {
                 .setDescription("Cria um novo cupom")
                 .addStringOption(opt => opt.setName("codigo").setDescription("Código do cupom").setRequired(true))
                 .addIntegerOption(opt => opt.setName("desconto").setDescription("Porcentagem de desconto (1-100)").setRequired(true))
-                .addIntegerOption(opt => opt.setName("usos").setDescription("Quantidade máxima de usos").setRequired(true))
+                .addIntegerOption(opt => opt.setName("usos").setDescription("Quantidade máxima de usos.").setRequired(true))
                 .addStringOption(opt => opt.setName("validade").setDescription("Data de validade (DD/MM/AAAA HH:MM)").setRequired(true))
+                .addStringOption(opt =>
+                    opt.setName("booster")
+                        .setDescription("Precisa ser booster?")
+                        .setRequired(true)
+                        .addChoices(
+                            { name: "Sim", value: "true" },
+                            { name: "Não", value: "false" }
+                        )
+                )
+                
         )
         .addSubcommand(sub =>
             sub.setName("deletar")
@@ -33,6 +43,7 @@ export default {
                 const discount = interaction.options.getInteger("desconto", true)
                 const maxUses = interaction.options.getInteger("usos", true)
                 const expiryStr = interaction.options.getString("validade", true)
+                const boosterStr = interaction.options.getString("booster", true)
 
                 // Parse da data DD/MM/AAAA HH:MM
                 const [datePart, timePart] = expiryStr.split(" ")
@@ -44,9 +55,11 @@ export default {
                     return await interaction.editReply({ content: "❌ Formato de data inválido. Use: DD/MM/AAAA HH:MM" })
                 }
 
+                const booster = boosterStr === "true"
+
                 await db.execute(
-                    "INSERT INTO coupons (code, discount_percent, max_uses, expires_at) VALUES (?, ?, ?, ?)",
-                    [code, discount, maxUses, expiryDate]
+                    "INSERT INTO coupons (code, discount_percent, max_uses, expires_at, booster) VALUES (?, ?, ?, ?, ?)",
+                    [code, discount, maxUses, expiryDate, booster]
                 )
 
                 const embed = new EmbedBuilder()
@@ -55,6 +68,7 @@ export default {
                     .addFields([
                         { name: "Desconto", value: `${discount}%`, inline: true },
                         { name: "Máximo de Usos", value: `${maxUses}`, inline: true },
+                        { name: "Booster", value: `${boosterStr}`, inline: true },
                         { name: "Validade", value: expiryDate.toLocaleString("pt-BR"), inline: false }
                     ])
                     .setColor("#FFFFFF")
