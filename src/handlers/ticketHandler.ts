@@ -1,18 +1,18 @@
 import { Client, ModalSubmitInteraction, ButtonInteraction, TextChannel, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, GuildMember } from "discord.js"
 import { db } from "../services/database"
-import { Asaas } from "../services/asaas"
+import { MercadoPago } from "../services/mercadopago"
 import { ENV } from "../config/env"
 import { RobloxService } from "../services/roblox"
 import { StatusService } from "../services/statusService"
 
 export class TicketHandler {
     private client: Client
-    private asaas: Asaas
+    private mp: MercadoPago
     private statusService: StatusService
 
     constructor(client: Client) {
         this.client = client
-        this.asaas = new Asaas()
+        this.mp = new MercadoPago()
         this.statusService = StatusService.getInstance()
         this.registerEvents()
     }
@@ -200,7 +200,7 @@ export class TicketHandler {
         const channel = await this.createTicketChannel(interaction, `🎟️-${interaction.user.username}`)
         if (!channel) return
 
-        const pixCharge = await this.asaas.createPixCharge(finalValue)
+        const pixCharge = await this.mp.createPixCharge(finalValue)
         if (!pixCharge) {
             await channel.delete().catch(() => {})
             return await interaction.editReply({ content: "Erro ao gerar PIX." })
@@ -241,7 +241,7 @@ export class TicketHandler {
     private async handlePaymentCheck(interaction: ButtonInteraction) {
         await interaction.deferReply({ ephemeral: true })
         const paymentId = interaction.customId.replace("check_payment_", "")
-        const isPaid = await this.asaas.isPixPaid(paymentId)
+        const isPaid = await this.mp.isPixPaid(paymentId)
 
         if (isPaid) {
             await db.execute("UPDATE tickets SET status = 'PAID' WHERE pix_payment_id = ?", [paymentId])
