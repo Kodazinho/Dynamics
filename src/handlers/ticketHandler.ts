@@ -22,20 +22,19 @@ export class TicketHandler {
             try {
                 if (interaction.isButton()) {
                     const isOpen = this.statusService.getStatus()
-                    
-                    // Botões que dependem do status aberto
+
                     if (["open_ticket", "open_support"].includes(interaction.customId) && !isOpen) {
-                        return await interaction.reply({ 
-                            content: "🔴 **Desculpe!** Nossos serviços de vendas e tickets estão fechados no momento. Por favor, tente novamente mais tarde.", 
-                            ephemeral: true 
+                        return await interaction.reply({
+                            content: "🔴 **Desculpe!** Nossos serviços de vendas e tickets estão fechados no momento. Por favor, tente novamente mais tarde.",
+                            ephemeral: true
                         })
                     }
 
                     switch (interaction.customId) {
-                        case "open_ticket": // Botão de Compra
+                        case "open_ticket":
                             await this.handleBuyButton(interaction)
                             break
-                        case "open_support": // Botão de Suporte Geral
+                        case "open_support":
                             await this.handleSupportButton(interaction)
                             break
                         case "close_ticket":
@@ -105,7 +104,7 @@ export class TicketHandler {
 
     private async handleSupportButton(interaction: ButtonInteraction) {
         await interaction.deferReply({ ephemeral: true })
-        
+
         const channel = await this.createTicketChannel(interaction, `📌-${interaction.user.username}`)
         if (!channel) return
 
@@ -154,7 +153,7 @@ export class TicketHandler {
             robloxNick: interaction.fields.getTextInputValue("roblox_nick"),
             couponCode: interaction.fields.getTextInputValue("coupon_code")?.toUpperCase() || null
         }
-        
+
         const gamepassPrice = parseInt(data.priceStr)
         if (isNaN(gamepassPrice)) return await interaction.editReply({ content: "❌ Preço inválido." })
 
@@ -163,7 +162,6 @@ export class TicketHandler {
         let finalValue = originalValue
         let discountApplied = 0
 
-        // Validação de Cupom
         if (data.couponCode) {
             const [couponRows]: any = await db.execute(
                 "SELECT * FROM coupons WHERE code = ? AND expires_at > NOW() AND used_count < max_uses",
@@ -175,25 +173,25 @@ export class TicketHandler {
                 discountApplied = coupon.discount_percent
                 finalValue = originalValue * (1 - discountApplied / 100)
 
-                if(coupon.booster == true){
+                if (coupon.booster == true) {
                     if (!interaction.guild) {
-                        return await interaction.reply({ content: "Este comando só pode ser usado em um servidor.", ephemeral: true });
+                        return await interaction.reply({ content: "Este comando só pode ser usado em um servidor.", ephemeral: true })
                     }
-                    
-                    const member = await interaction.guild.members.fetch(interaction.user.id);
+                    const member = await interaction.guild.members.fetch(interaction.user.id)
                     if (!member.premiumSince) {
-                        return await interaction.editReply({ content: "Para você utilizar este cupom precisa ser booster no servidor." });
+                        return await interaction.editReply({ content: "Para você utilizar este cupom precisa ser booster no servidor." })
                     }
                 }
 
-
-                
-                // Incrementa o uso do cupom
                 await db.execute("UPDATE coupons SET used_count = used_count + 1 WHERE id = ?", [coupon.id])
             } else {
                 return await interaction.editReply({ content: "Cupom inválido, expirado ou com limite de uso atingido." })
             }
         }
+
+        // Arredonda para 2 casas decimais para evitar erros de ponto flutuante no Mercado Pago
+        finalValue = Math.round(finalValue * 100) / 100
+        originalValue = Math.round(originalValue * 100) / 100
 
         if (finalValue < 5.00) return await interaction.editReply({ content: `Valor mínimo R$ 5,00 (Aprox. ${Math.ceil(5 / robuxPrice)} Robux).` })
 
@@ -206,9 +204,10 @@ export class TicketHandler {
             return await interaction.editReply({ content: "Erro ao gerar PIX." })
         }
 
+        // Salva channel_id: fonte de verdade para todos os handlers posteriores
         await db.execute(
-            "INSERT INTO tickets (user_id, game_name, gamepass_name, gamepass_price, roblox_nick, pix_payment_id, status, coupon_code, original_price, final_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [interaction.user.id, data.gameName, data.gamepassName, gamepassPrice, data.robloxNick, pixCharge.id, 'PENDING', data.couponCode, originalValue, finalValue]
+            "INSERT INTO tickets (user_id, game_name, gamepass_name, gamepass_price, roblox_nick, pix_payment_id, status, coupon_code, original_price, final_price, channel_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [interaction.user.id, data.gameName, data.gamepassName, gamepassPrice, data.robloxNick, pixCharge.id, "PENDING", data.couponCode, originalValue, finalValue, channel.id]
         )
 
         const embed = new EmbedBuilder()
@@ -245,8 +244,7 @@ export class TicketHandler {
 
         if (isPaid) {
             await db.execute("UPDATE tickets SET status = 'PAID' WHERE pix_payment_id = ?", [paymentId])
-            
-            // Cargo de cliente
+
             if (ENV.roleClienteId && interaction.member instanceof GuildMember) {
                 const role = await interaction.guild?.roles.fetch(ENV.roleClienteId)
                 if (role) await interaction.member.roles.add(role)
@@ -255,7 +253,7 @@ export class TicketHandler {
             const channel = interaction.channel as TextChannel
             await channel.setName(channel.name.replace("🎟️", "💵"))
             await channel.send({ content: "@everyone 💵 **Pagamento confirmado!** O pedido já pode ser processado." })
-            
+
             const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
                 new ButtonBuilder().setCustomId("paid_done").setLabel("Pago").setStyle(ButtonStyle.Secondary).setDisabled(true).setEmoji("🎉"),
                 new ButtonBuilder().setCustomId("mark_in_service").setLabel("Atender").setStyle(ButtonStyle.Primary).setEmoji("👨‍💻"),
@@ -275,14 +273,14 @@ export class TicketHandler {
         await interaction.deferUpdate()
         const row = ActionRowBuilder.from(interaction.message.components[0] as any) as ActionRowBuilder<ButtonBuilder>
         row.components = row.components.map(b => {
-            if (b.data.custom_id === "mark_in_service") {
+            if ((b.data as any).custom_id === "mark_in_service") {
                 return new ButtonBuilder().setCustomId("mark_delivered").setLabel("Entregar").setStyle(ButtonStyle.Success).setEmoji("📦")
             }
             return ButtonBuilder.from(b as any)
         })
 
         await interaction.message.edit({
-            content: `${interaction.message.content}\n\n👨‍💻 **Atendido por:** ${interaction.user}`,
+            content: `${interaction.message.content}\n\n👨‍💻 **Em atendimento por:** ${interaction.user}`,
             components: [row]
         })
     }
@@ -294,7 +292,7 @@ export class TicketHandler {
         await interaction.deferUpdate()
         const row = ActionRowBuilder.from(interaction.message.components[0] as any) as ActionRowBuilder<ButtonBuilder>
         row.components = row.components.map(b => {
-            if (b.data.custom_id === "mark_delivered") {
+            if ((b.data as any).custom_id === "mark_delivered") {
                 return new ButtonBuilder().setCustomId("delivered_done").setLabel("Entregue").setStyle(ButtonStyle.Secondary).setDisabled(true).setEmoji("✅")
             }
             return ButtonBuilder.from(b as any)
@@ -305,45 +303,72 @@ export class TicketHandler {
             components: [row]
         })
 
-        // Log de venda
+        // Atualiza status para DELIVERED direto pelo channel_id — sem scraping
+        const channel = interaction.channel as TextChannel
+        const [rows]: any = await db.execute(
+            "SELECT * FROM tickets WHERE channel_id = ? LIMIT 1",
+            [channel.id]
+        )
+        const ticket = rows?.[0]
+        if (!ticket) return
+
+        await db.execute("UPDATE tickets SET status = 'DELIVERED' WHERE id = ?", [ticket.id])
+
         if (ENV.salesChannelId) {
             const salesChannel = await this.client.channels.fetch(ENV.salesChannelId) as TextChannel
             if (salesChannel) {
-                const [ticketData]: any = await db.execute(
-                    "SELECT * FROM tickets WHERE user_id = ? OR ? LIKE CONCAT('%', user_id, '%') ORDER BY created_at DESC LIMIT 1",
-                    [interaction.user.id, interaction.message.content]
-                )
-                if (ticketData?.[0]) {
-                    const t = ticketData[0]
-                    const robloxAvatar = await RobloxService.getUserAvatar(t.roblox_nick)
-                    const embed = new EmbedBuilder()
-                        .setTitle("<:fro:1471955092948258898> ﹒！NOVA VENDAㅤㅤ୨୧")
-                        .setDescription("Mais uma entrega concluída com sucesso em nossa loja!")
-                            .addFields([
-                                { name: "<a:branco9:1471948803195277497> Produto", value: `\`${t.gamepass_name}\``, inline: true },
-                                { name: "<a:branco9:1471948803195277497> Quantidade", value: `\`${t.gamepass_price} Robux\``, inline: true },
-                                { name: "<a:branco9:1471948803195277497> Jogo", value: `\`${t.game_name}\``, inline: true },
-                                { name: "<a:branco9:1471948803195277497> Jogador", value: `\`${t.roblox_nick}\``, inline: true },
-                                { name: "<a:branco9:1471948803195277497> Atendido por", value: `${interaction.user}`, inline: true }
-                            ])
-                        .setImage("https://media.discordapp.net/attachments/1464406013255090309/1471958305604632689/70_Sem_Titulo_20260213165633.png?ex=69917c3f&is=69902abf&hm=d63280836f56c02e2c2db04c50d4ff0d48d51981d3f6720625acb63224ed546a&=&format=webp&quality=lossless")
-                        .setColor("#FFFFFF")
-                        .setTimestamp();
+                const robloxAvatar = await RobloxService.getUserAvatar(ticket.roblox_nick)
+                const embed = new EmbedBuilder()
+                    .setTitle("<:fro:1471955092948258898> ﹒！NOVA VENDAㅤㅤ୨୧")
+                    .setDescription("Mais uma entrega concluída com sucesso em nossa loja!")
+                    .addFields([
+                        { name: "<a:branco9:1471948803195277497> Produto", value: `\`${ticket.gamepass_name}\``, inline: true },
+                        { name: "<a:branco9:1471948803195277497> Quantidade", value: `\`${ticket.gamepass_price} Robux\``, inline: true },
+                        { name: "<a:branco9:1471948803195277497> Jogo", value: `\`${ticket.game_name}\``, inline: true },
+                        { name: "<a:branco9:1471948803195277497> Jogador", value: `\`${ticket.roblox_nick}\``, inline: true },
+                        { name: "<a:branco9:1471948803195277497> Atendido por", value: `${interaction.user}`, inline: true }
+                    ])
+                    .setImage("https://media.discordapp.net/attachments/1464406013255090309/1471958305604632689/70_Sem_Titulo_20250213165633.png?ex=69917c3f&is=69902abf&hm=d63280836f56c02e2c2db04c50d4ff0d48d51981d3f6720625acb63224ed546a&=&format=webp&quality=lossless")
+                    .setColor("#FFFFFF")
+                    .setTimestamp()
 
-                        if (robloxAvatar) {
-                            embed.setThumbnail(robloxAvatar)
-                        }
-                    await salesChannel.send({ embeds: [embed] })
-                }
+                if (robloxAvatar) embed.setThumbnail(robloxAvatar)
+                await salesChannel.send({ embeds: [embed] })
             }
         }
     }
 
     private async handleCloseTicket(interaction: ButtonInteraction) {
-        await interaction.deferReply()
+        await interaction.deferReply({ ephemeral: true })
         const channel = interaction.channel as TextChannel
+
+        const [rows]: any = await db.execute(
+            "SELECT * FROM tickets WHERE channel_id = ? LIMIT 1",
+            [channel.id]
+        )
+        const ticket = rows?.[0]
+
+        if (ticket) {
+            if (ticket.status === "PENDING") {
+                const isPaid = await this.mp.isPixPaid(ticket.pix_payment_id)
+                if (isPaid) {
+                    await db.execute("UPDATE tickets SET status = 'PAID' WHERE id = ?", [ticket.id])
+                    ticket.status = "PAID"
+                }
+            }
+
+            if (ticket.status === "PAID") {
+                return await interaction.editReply({
+                    content: "❌ **Este ticket está pago e ainda não foi entregue.** Marque como entregue antes de fechar."
+                })
+            }
+        }
+
         const messages = await channel.messages.fetch({ limit: 100 })
-        const transcript = messages.reverse().map(m => `[${m.createdAt.toLocaleString()}] ${m.author.tag}: ${m.content}`).join("\n")
+        const transcript = messages
+            .reverse()
+            .map(m => `[${m.createdAt.toLocaleString()}] ${m.author.tag}: ${m.content}`)
+            .join("\n")
 
         const logChannelId = ENV.ticketLogChannelId || ENV.logChannelId
         if (logChannelId) {
@@ -353,8 +378,9 @@ export class TicketHandler {
                 const embed = new EmbedBuilder()
                     .setTitle(`Ticket Fechado - ${channel.name}`)
                     .addFields([
-                        { name: "Usuário", value: `${interaction.user}`, inline: true },
-                        { name: "Fechado por", value: `${interaction.user}`, inline: true }
+                        { name: "Usuário", value: ticket ? `<@${ticket.user_id}>` : "Desconhecido", inline: true },
+                        { name: "Fechado por", value: `${interaction.user}`, inline: true },
+                        { name: "Status", value: ticket?.status ?? "SUPORTE", inline: true }
                     ])
                     .setColor("#FF0000")
                     .setTimestamp()

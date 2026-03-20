@@ -12,12 +12,12 @@ export class MercadoPago {
     async createPixCharge(value: number): Promise<{ id: string; encodedImage: string; payload: string } | null> {
         const response = await this.payment.create({
             body: {
-                transaction_amount: value,
+                transaction_amount: Math.round(value * 100) / 100,
                 payment_method_id: "pix",
                 payer: { email: "cliente@email.com" }
             }
         })
-        // QR code em: response.point_of_interaction.transaction_data
+
         return {
             id: String(response.id),
             encodedImage: response.point_of_interaction?.transaction_data?.qr_code_base64 ?? "",
