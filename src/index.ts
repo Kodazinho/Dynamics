@@ -4,6 +4,7 @@ import { loadCommands } from "./handlers/commandHandler"
 import { Logger } from "./utils/logger"
 import { TicketHandler } from "./handlers/ticketHandler"
 import { WelcomeHandler } from "./handlers/welcomeHandler"
+import { InviteHandler } from "./handlers/inviteHandler"
 import { StatusService } from "./services/statusService"
 
 if (!ENV.owner) {
@@ -15,6 +16,7 @@ const OWNER_IDS = ENV.owner.split(",").map(id => id.trim())
 const client = createClient()
 new TicketHandler(client)
 new WelcomeHandler(client)
+new InviteHandler(client)
 
 client.once("ready", async () => {
     Logger.success(`Bot online como ${client.user?.tag}`)
@@ -47,14 +49,14 @@ client.once("ready", async () => {
 client.on("interactionCreate", async (interaction) => {
     if (!interaction.isChatInputCommand()) return
 
-    if (!OWNER_IDS.includes(interaction.user.id)) {
+    if (interaction.commandName !== "invites" && !OWNER_IDS.includes(interaction.user.id)) {
         return interaction.reply({
             content: "❌ Você não tem permissão para usar este comando.",
             ephemeral: true
         })
     }
 
-    const command = client.commands.get(interaction.commandName)
+    const command = client.commands.get(interaction.commandName);
     if (!command) return
 
     try {

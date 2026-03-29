@@ -4,6 +4,7 @@ import { MercadoPago } from "../services/mercadopago"
 import { ENV } from "../config/env"
 import { RobloxService } from "../services/roblox"
 import { StatusService } from "../services/statusService"
+import { InviteHandler } from "./inviteHandler"
 
 export class TicketHandler {
     private client: Client
@@ -162,6 +163,14 @@ export class TicketHandler {
         let finalValue = originalValue
         let discountApplied = 0
 
+        // Aplica desconto por convites (máximo 5%)
+        const inviteStats = await InviteHandler.getUserInvites(interaction.user.id)
+        const inviteDiscount = inviteStats.discount
+        if (inviteDiscount > 0) {
+            discountApplied += inviteDiscount
+            finalValue = originalValue * (1 - discountApplied / 100)
+        }
+
         if (data.couponCode) {
             const [couponRows]: any = await db.execute(
                 "SELECT * FROM coupons WHERE code = ? AND expires_at > NOW() AND used_count < max_uses",
@@ -206,8 +215,8 @@ export class TicketHandler {
 
         // Salva channel_id: fonte de verdade para todos os handlers posteriores
         await db.execute(
-            "INSERT INTO tickets (user_id, game_name, gamepass_name, gamepass_price, roblox_nick, pix_payment_id, status, coupon_code, original_price, final_price, channel_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [interaction.user.id, data.gameName, data.gamepassName, gamepassPrice, data.robloxNick, pixCharge.id, "PENDING", data.couponCode, originalValue, finalValue, channel.id]
+            "INSERT INTO tickets (user_id, game_name, gamepass_name, gamepass_price, roblox_nick, pix_payment_id, status, coupon_code, original_price, final_price, channel_id, invite_discount_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [interaction.user.id, data.gameName, data.gamepassName, gamepassPrice, data.robloxNick, pixCharge.id, "PENDING", data.couponCode, originalValue, finalValue, channel.id, inviteDiscount]
         )
 
         const embed = new EmbedBuilder()
@@ -313,6 +322,10 @@ export class TicketHandler {
         if (!ticket) return
 
         await db.execute("UPDATE tickets SET status = 'DELIVERED' WHERE id = ?", [ticket.id])
+
+        if (ticket.invite_discount_used > 0) {
+            await InviteHandler.consumeInvites(ticket.user_id, ticket.invite_discount_used)
+        }
 
         if (ENV.salesChannelId) {
             const salesChannel = await this.client.channels.fetch(ENV.salesChannelId) as TextChannel
