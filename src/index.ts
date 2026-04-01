@@ -30,8 +30,9 @@ client.once("ready", async () => {
         return
     }
 
-    client.guilds.cache.forEach(async (guild) => {
-        if (guild.id !== allowedServerId) {
+    // Corrigido: Usando for...of para aguardar as operações async
+    for (const [id, guild] of client.guilds.cache) {
+        if (id !== allowedServerId) {
             try {
                 await guild.leave()
                 Logger.info(`Sai do servidor: ${guild.name} (${guild.id})`)
@@ -42,14 +43,13 @@ client.once("ready", async () => {
         } else {
             Logger.success(`Permanece no servidor permitido: ${guild.name} (${guild.id})`)
         }
-    })
+    }
 })
-
 
 client.on("interactionCreate", async (interaction) => {
     if (!interaction.isChatInputCommand()) return
 
-    if (interaction.commandName !== "invites" && !OWNER_IDS.includes(interaction.user.id)) {
+    if (interaction.commandName !== "invites" && interaction.commandName !== "saldo" && !OWNER_IDS.includes(interaction.user.id)) {
         return interaction.reply({
             content: "❌ Você não tem permissão para usar este comando.",
             ephemeral: true
@@ -62,8 +62,16 @@ client.on("interactionCreate", async (interaction) => {
     try {
         await command.execute(interaction)
     } catch (error) {
-        Logger.error("Erro ao executar comando")
+        Logger.error(`Erro ao executar comando ${interaction.commandName}`)
         console.log(error)
+        
+        // Corrigido: Responde ao usuário em caso de erro
+        const errorMessage = "❌ Ocorreu um erro ao executar este comando."
+        if (interaction.deferred || interaction.replied) {
+            await interaction.editReply({ content: errorMessage }).catch(() => {})
+        } else {
+            await interaction.reply({ content: errorMessage, ephemeral: true }).catch(() => {})
+        }
     }
 })
 

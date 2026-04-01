@@ -5,16 +5,19 @@ import { ENV } from "../config/env"
 import { RobloxService } from "../services/roblox"
 import { StatusService } from "../services/statusService"
 import { InviteHandler } from "./inviteHandler"
+import { PaymentService } from "../services/paymentService"
 
 export class TicketHandler {
     private client: Client
     private mp: MercadoPago
     private statusService: StatusService
+    private paymentService: PaymentService
 
     constructor(client: Client) {
         this.client = client
         this.mp = new MercadoPago()
         this.statusService = StatusService.getInstance()
+        this.paymentService = PaymentService.getInstance()
         this.registerEvents()
     }
 
@@ -162,6 +165,7 @@ export class TicketHandler {
         let originalValue = gamepassPrice * robuxPrice
         let finalValue = originalValue
         let discountApplied = 0
+        let influencerComission = 0
 
         // Aplica desconto por convites (máximo 5%)
         const inviteStats = await InviteHandler.getUserInvites(interaction.user.id)
@@ -179,7 +183,8 @@ export class TicketHandler {
 
             if (couponRows.length > 0) {
                 const coupon = couponRows[0]
-                discountApplied = coupon.discount_percent
+                // Corrigido: Soma o desconto do cupom ao desconto de convites
+                discountApplied += coupon.discount_percent
                 finalValue = originalValue * (1 - discountApplied / 100)
 
                 if (coupon.booster == true) {
@@ -192,31 +197,53 @@ export class TicketHandler {
                     }
                 }
 
+                // Calcula comissão do influencer se houver
+                if (coupon.influencer_id && coupon.influencer_percent > 0) {
+                    influencerComission = finalValue * (coupon.influencer_percent / 100)
+                }
+
                 await db.execute("UPDATE coupons SET used_count = used_count + 1 WHERE id = ?", [coupon.id])
             } else {
                 return await interaction.editReply({ content: "Cupom inválido, expirado ou com limite de uso atingido." })
             }
         }
 
-        // Arredonda para 2 casas decimais para evitar erros de ponto flutuante no Mercado Pago
+        // Sistema de Saldo
+        const [balanceRows]: any = await db.execute("SELECT balance FROM user_balance WHERE user_id = ?", [interaction.user.id])
+        let userBalance = balanceRows.length > 0 ? parseFloat(balanceRows[0].balance) : 0
+        let balanceUsed = 0
+
+        if (userBalance > 0) {
+            const minPayment = 2.50
+            if (finalValue > minPayment) {
+                const maxDeductible = finalValue - minPayment
+                balanceUsed = Math.min(userBalance, maxDeductible)
+                finalValue -= balanceUsed
+            }
+        }
+
+        // Arredonda para 2 casas decimais
         finalValue = Math.round(finalValue * 100) / 100
         originalValue = Math.round(originalValue * 100) / 100
+        balanceUsed = Math.round(balanceUsed * 100) / 100
+        influencerComission = Math.round(influencerComission * 100) / 100
 
-        if (finalValue < 5.00) return await interaction.editReply({ content: `Valor mínimo R$ 5,00 (Aprox. ${Math.ceil(5 / robuxPrice)} Robux).` })
+        // Valor mínimo da API de pagamento é 2.50 conforme solicitado
+        if (finalValue < 2.50) return await interaction.editReply({ content: `Valor mínimo para pagamento é R$ 2,50. Valor atual: R$ ${finalValue.toFixed(2)}` })
 
         const channel = await this.createTicketChannel(interaction, `🎟️-${interaction.user.username}`)
         if (!channel) return
 
-        const pixCharge = await this.mp.createPixCharge(finalValue)
+        const pixCharge = await this.mp.createPixCharge(finalValue);
         if (!pixCharge) {
             await channel.delete().catch(() => {})
             return await interaction.editReply({ content: "Erro ao gerar PIX." })
         }
 
-        // Salva channel_id: fonte de verdade para todos os handlers posteriores
+        // Salva ticket com novas colunas
         await db.execute(
-            "INSERT INTO tickets (user_id, game_name, gamepass_name, gamepass_price, roblox_nick, pix_payment_id, status, coupon_code, original_price, final_price, channel_id, invite_discount_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [interaction.user.id, data.gameName, data.gamepassName, gamepassPrice, data.robloxNick, pixCharge.id, "PENDING", data.couponCode, originalValue, finalValue, channel.id, inviteDiscount]
+            "INSERT INTO tickets (user_id, game_name, gamepass_name, gamepass_price, roblox_nick, pix_payment_id, status, coupon_code, original_price, final_price, channel_id, invite_discount_used, balance_used, influencer_comission) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [interaction.user.id, data.gameName, data.gamepassName, gamepassPrice, data.robloxNick, pixCharge.id, "PENDING", data.couponCode, originalValue, finalValue, channel.id, inviteDiscount, balanceUsed, influencerComission]
         )
 
         const embed = new EmbedBuilder()
@@ -225,10 +252,18 @@ export class TicketHandler {
             .addFields([
                 { name: "👤 Nick", value: `\`${data.robloxNick}\``, inline: true },
                 { name: "💎 Robux", value: `${gamepassPrice}`, inline: true },
-                { name: "💰 Valor", value: discountApplied > 0 ? `~~R$ ${originalValue.toFixed(2)}~~ **R$ ${finalValue.toFixed(2)}** (-${discountApplied}%)` : `R$ ${finalValue.toFixed(2)}`, inline: true }
+                { name: "💰 Valor", value: `R$ ${finalValue.toFixed(2)}`, inline: true }
             ])
             .setColor("#FFFFFF")
+            .setTimestamp()
             .setImage("attachment://pix.png")
+
+        if (discountApplied > 0) {
+            embed.addFields({ name: "🎟️ Desconto", value: `${discountApplied}%`, inline: true })
+        }
+        if (balanceUsed > 0) {
+            embed.addFields({ name: "💵 Saldo Usado", value: `R$ ${balanceUsed.toFixed(2)}`, inline: true })
+        }
 
         const robloxAvatar = await RobloxService.getUserAvatar(data.robloxNick)
         if (robloxAvatar) embed.setThumbnail(robloxAvatar)
@@ -252,24 +287,15 @@ export class TicketHandler {
         const isPaid = await this.mp.isPixPaid(paymentId)
 
         if (isPaid) {
-            await db.execute("UPDATE tickets SET status = 'PAID' WHERE pix_payment_id = ?", [paymentId])
+            const [ticketRows]: any = await db.execute("SELECT * FROM tickets WHERE pix_payment_id = ?", [paymentId])
+            const ticket = ticketRows[0]
 
-            if (ENV.roleClienteId && interaction.member instanceof GuildMember) {
-                const role = await interaction.guild?.roles.fetch(ENV.roleClienteId)
-                if (role) await interaction.member.roles.add(role)
+            if (ticket && ticket.status === 'PENDING') {
+                await this.paymentService.processPayment(ticket, this.client, interaction)
+                await interaction.editReply({ content: "Pagamento confirmado!" })
+            } else {
+                await interaction.editReply({ content: "Pagamento já processado ou ticket não encontrado." })
             }
-
-            const channel = interaction.channel as TextChannel
-            await channel.setName(channel.name.replace("🎟️", "💵"))
-            await channel.send({ content: "@everyone 💵 **Pagamento confirmado!** O pedido já pode ser processado." })
-
-            const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                new ButtonBuilder().setCustomId("paid_done").setLabel("Pago").setStyle(ButtonStyle.Secondary).setDisabled(true).setEmoji("🎉"),
-                new ButtonBuilder().setCustomId("mark_in_service").setLabel("Atender").setStyle(ButtonStyle.Primary).setEmoji("👨‍💻"),
-                new ButtonBuilder().setCustomId("close_ticket").setLabel("Fechar").setStyle(ButtonStyle.Danger).setEmoji("🔒")
-            )
-            await interaction.message.edit({ components: [row] })
-            await interaction.editReply({ content: "Pagamento confirmado!" })
         } else {
             await interaction.editReply({ content: "Pagamento não detectado." })
         }
@@ -312,7 +338,6 @@ export class TicketHandler {
             components: [row]
         })
 
-        // Atualiza status para DELIVERED direto pelo channel_id — sem scraping
         const channel = interaction.channel as TextChannel
         const [rows]: any = await db.execute(
             "SELECT * FROM tickets WHERE channel_id = ? LIMIT 1",
@@ -365,7 +390,8 @@ export class TicketHandler {
             if (ticket.status === "PENDING") {
                 const isPaid = await this.mp.isPixPaid(ticket.pix_payment_id)
                 if (isPaid) {
-                    await db.execute("UPDATE tickets SET status = 'PAID' WHERE id = ?", [ticket.id])
+                    // BUG FIX: Agora processa o pagamento completo (saldo, comissão, etc) se detectar pago no fechamento
+                    await this.paymentService.processPayment(ticket, this.client)
                     ticket.status = "PAID"
                 }
             }

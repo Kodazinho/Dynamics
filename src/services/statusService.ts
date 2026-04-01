@@ -67,22 +67,24 @@ export class StatusService {
             const emoji = this.isOpen ? "🟢" : "🔴"
             const currentName = channel.name
             
-            // Lógica melhorada para mudar apenas o emoji inicial
+            // Corrigido: Lógica para evitar nomes duplicados como "﹕status﹒status﹒"
             let newName: string
             if (currentName.includes("﹕status﹒")) {
-                const parts = currentName.split("﹕status﹒")
-                newName = `${emoji}﹕status﹒${parts[1]}`
+                // Se já tem o formato, apenas troca o emoji inicial
+                // Remove qualquer emoji anterior (primeiro caractere) e reconstrói
+                const baseName = currentName.substring(currentName.indexOf("﹕status﹒"))
+                newName = `${emoji}${baseName}`
             } else {
+                // Se não tem o formato, cria do zero
                 newName = `${emoji}﹕status﹒status﹒`
             }
 
             if (currentName !== newName) {
                 // Rate limit do Discord para mudar nome de canal é rigoroso (2 vezes a cada 10 min)
-                // Usamos catch para evitar que erros de rate limit quebrem o fluxo
                 await channel.setName(newName).catch(e => Logger.error(`Rate limit ao mudar nome do canal: ${e.message}`))
             }
 
-            // Conectar ao canal de voz (isso geralmente é rápido)
+            // Conectar ao canal de voz
             joinVoiceChannel({
                 channelId: channel.id,
                 guildId: channel.guild.id,

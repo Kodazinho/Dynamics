@@ -21,7 +21,8 @@ export default {
                             { name: "Não", value: "false" }
                         )
                 )
-                
+                .addUserOption(opt => opt.setName("influencer").setDescription("Usuário influenciador (Opcional)").setRequired(false))
+                .addIntegerOption(opt => opt.setName("comissao").setDescription("Porcentagem de lucro do influenciador (Opcional)").setRequired(false))
         )
         .addSubcommand(sub =>
             sub.setName("deletar")
@@ -44,6 +45,8 @@ export default {
                 const maxUses = interaction.options.getInteger("usos", true)
                 const expiryStr = interaction.options.getString("validade", true)
                 const boosterStr = interaction.options.getString("booster", true)
+                const influencer = interaction.options.getUser("influencer")
+                const commission = interaction.options.getInteger("comissao") || 0
 
                 // Parse da data DD/MM/AAAA HH:MM
                 const [datePart, timePart] = expiryStr.split(" ")
@@ -58,8 +61,8 @@ export default {
                 const booster = boosterStr === "true"
 
                 await db.execute(
-                    "INSERT INTO coupons (code, discount_percent, max_uses, expires_at, booster) VALUES (?, ?, ?, ?, ?)",
-                    [code, discount, maxUses, expiryDate, booster]
+                    "INSERT INTO coupons (code, discount_percent, max_uses, expires_at, booster, influencer_id, influencer_percent) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [code, discount, maxUses, expiryDate, booster, influencer?.id || null, commission]
                 )
 
                 const embed = new EmbedBuilder()
@@ -73,6 +76,13 @@ export default {
                     ])
                     .setColor("#FFFFFF")
                     .setTimestamp()
+
+                if (influencer) {
+                    embed.addFields([
+                        { name: "Influenciador", value: `${influencer}`, inline: true },
+                        { name: "Comissão", value: `${commission}%`, inline: true }
+                    ])
+                }
 
                 await interaction.editReply({ embeds: [embed] })
 
@@ -94,9 +104,13 @@ export default {
                     .setTimestamp()
 
                 rows.forEach((c: any) => {
+                    let value = `Desconto: ${c.discount_percent}% | Usos: ${c.used_count}/${c.max_uses} | Expira em: ${new Date(c.expires_at).toLocaleString("pt-BR")}`
+                    if (c.influencer_id) {
+                        value += `\nInfluencer: <@${c.influencer_id}> (${c.influencer_percent}%)`
+                    }
                     embed.addFields({
                         name: `Código: ${c.code}`,
-                        value: `Desconto: ${c.discount_percent}% | Usos: ${c.used_count}/${c.max_uses} | Expira em: ${new Date(c.expires_at).toLocaleString("pt-BR")}`,
+                        value: value,
                         inline: false
                     })
                 })

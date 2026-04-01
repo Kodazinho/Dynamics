@@ -10,7 +10,8 @@ export function createClient(): BotClient {
             GatewayIntentBits.Guilds,
             GatewayIntentBits.GuildMessages,
             GatewayIntentBits.GuildMembers,
-            GatewayIntentBits.MessageContent 
+            GatewayIntentBits.MessageContent,
+            GatewayIntentBits.GuildInvites
         ]
     }) as BotClient
 
